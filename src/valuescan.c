@@ -148,7 +148,7 @@ int vs_search(int fd, const uint8_t data[], size_t size, void *ctx, vs_callback 
 	}
 
 	size_t rem = st.st_size;
-	for (void *ptr = filedata; rem > 0;) {
+	for (void *ptr = filedata; rem >= size;) {
 		uint8_t *next = memmem(ptr, rem, data, size);
 
 		if (!next) {
@@ -159,7 +159,7 @@ int vs_search(int fd, const uint8_t data[], size_t size, void *ctx, vs_callback 
 			break;
 		}
 
-		rem -= (size_t)(next - (const uint8_t*)ptr);
+		rem -= (size_t)(next - (const uint8_t*)ptr) + size;
 		ptr = next + size;
 	}
 
