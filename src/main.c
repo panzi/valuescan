@@ -264,7 +264,7 @@ int main(int argc, char *argv[]) {
 
 			if (valuescan(filename, fd, format, value) != 0) {
 				if (errno == EINVAL || errno == ERANGE) {
-					fprintf(stderr, strerror(errno));
+					fprintf(stderr, "%s\n", strerror(errno));
 				}
 				else {
 					perror(filename);
