@@ -64,6 +64,8 @@ static int valuescan(const char *filename, int fd, const char *format, const cha
 
 		return vs_search_u8(fd, (uint8_t)value, ctx, print_offset);
 	}
+
+	// little endian values
 	else if (strcasecmp(format, "i16le") == 0) {
 		long int value = strtol(svalue, &endptr, 10);
 
@@ -154,6 +156,100 @@ static int valuescan(const char *filename, int fd, const char *format, const cha
 
 		return vs_search_u64le(fd, (uint64_t)value, ctx, print_offset);
 	}
+
+	// big endian values
+	else if (strcasecmp(format, "i16be") == 0) {
+		long int value = strtol(svalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return -1;
+		}
+
+		if (value < INT16_MIN || value > INT16_MAX) {
+			errno = ERANGE;
+			return -1;
+		}
+
+		return vs_search_i16be(fd, (int16_t)value, ctx, print_offset);
+	}
+	else if (strcasecmp(format, "u16be") == 0) {
+		unsigned long int value = strtoul(svalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return -1;
+		}
+
+		if (value > INT16_MAX) {
+			errno = ERANGE;
+			return -1;
+		}
+
+		return vs_search_u16be(fd, (uint16_t)value, ctx, print_offset);
+	}
+	else if (strcasecmp(format, "i32be") == 0) {
+		long int value = strtol(svalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return -1;
+		}
+
+		if (value < INT32_MIN || value > INT32_MAX) {
+			errno = ERANGE;
+			return -1;
+		}
+
+		return vs_search_i32be(fd, (int32_t)value, ctx, print_offset);
+	}
+	else if (strcasecmp(format, "u32be") == 0) {
+		unsigned long int value = strtoul(svalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return -1;
+		}
+
+		if (value > INT32_MAX) {
+			errno = ERANGE;
+			return -1;
+		}
+
+		return vs_search_u32be(fd, (uint32_t)value, ctx, print_offset);
+	}
+	else if (strcasecmp(format, "i64be") == 0) {
+		long long int value = strtoll(svalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return -1;
+		}
+
+		if (value < INT64_MIN || value > INT64_MAX) {
+			errno = ERANGE;
+			return -1;
+		}
+
+		return vs_search_i64be(fd, (uint64_t)value, ctx, print_offset);
+	}
+	else if (strcasecmp(format, "u64be") == 0) {
+		unsigned long long int value = strtoull(svalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return -1;
+		}
+
+		if (value > INT64_MAX) {
+			errno = ERANGE;
+			return -1;
+		}
+
+		return vs_search_u64be(fd, (uint64_t)value, ctx, print_offset);
+	}
+
+	// floating point values
 #ifdef __STDC_IEC_559__
 	else if (strcasecmp(format, "f32") == 0) {
 		float value = strtof(svalue, &endptr);
