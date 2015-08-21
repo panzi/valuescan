@@ -89,7 +89,7 @@ static int valuescan(const char *filename, int fd, const char *format, const cha
 			return -1;
 		}
 
-		if (value > INT16_MAX) {
+		if (value > UINT16_MAX) {
 			errno = ERANGE;
 			return -1;
 		}
@@ -119,7 +119,7 @@ static int valuescan(const char *filename, int fd, const char *format, const cha
 			return -1;
 		}
 
-		if (value > INT32_MAX) {
+		if (value > UINT32_MAX) {
 			errno = ERANGE;
 			return -1;
 		}
@@ -149,7 +149,7 @@ static int valuescan(const char *filename, int fd, const char *format, const cha
 			return -1;
 		}
 
-		if (value > INT64_MAX) {
+		if (value > UINT64_MAX) {
 			errno = ERANGE;
 			return -1;
 		}
@@ -181,7 +181,7 @@ static int valuescan(const char *filename, int fd, const char *format, const cha
 			return -1;
 		}
 
-		if (value > INT16_MAX) {
+		if (value > UINT16_MAX) {
 			errno = ERANGE;
 			return -1;
 		}
@@ -211,7 +211,7 @@ static int valuescan(const char *filename, int fd, const char *format, const cha
 			return -1;
 		}
 
-		if (value > INT32_MAX) {
+		if (value > UINT32_MAX) {
 			errno = ERANGE;
 			return -1;
 		}
@@ -241,7 +241,7 @@ static int valuescan(const char *filename, int fd, const char *format, const cha
 			return -1;
 		}
 
-		if (value > INT64_MAX) {
+		if (value > UINT64_MAX) {
 			errno = ERANGE;
 			return -1;
 		}
