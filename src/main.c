@@ -430,7 +430,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	for (;;) {
-		int c = getopt_long(argc, argv, "hf:", long_options, NULL);
+		int c = getopt_long(argc, argv, "hf:s:e:", long_options, NULL);
 
 		if (c == -1)
 			break;
