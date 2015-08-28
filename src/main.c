@@ -56,15 +56,8 @@ static int parse_offset(const char *str, off_t *valueptr) {
 }
 
 static int valuescan(const char *filename, int fd, int flags, off_t offset_start, off_t offset_end,
-		const char *format, const char *svalue) {
-	void *ctx = (void*)filename;
-	char *endptr = NULL;
+		const uint8_t needle[], size_t needle_size) {
 	struct stat st;
-
-	if (!*svalue) {
-		errno = EINVAL;
-		return -1;
-	}
 
 	if (fstat(fd, &st) != 0) {
 		return -1;
@@ -112,7 +105,6 @@ static int valuescan(const char *filename, int fd, int flags, off_t offset_start
 		return -1;
 	}
 
-	int status = 0;
 	const size_t haystack_size = (size_t)(options.end - options.start);
 	const uint8_t *haystack = mmap(NULL, haystack_size, PROT_READ, MAP_PRIVATE, fd, options.start);
 
@@ -120,288 +112,304 @@ static int valuescan(const char *filename, int fd, int flags, off_t offset_start
 		return -1;
 	}
 
-	errno = 0;
-	if (strcasecmp(format, "i8") == 0) {
-		long int value = strtol(svalue, &endptr, 10);
+	int status = vs_search(haystack, haystack_size, needle, needle_size, &options, &print_offset);
 
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value < INT8_MIN || value > INT8_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_i8(haystack, haystack_size, (int8_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "u8") == 0) {
-		unsigned long int value = strtoul(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value > UINT8_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_u8(haystack, haystack_size, (uint8_t)value, ctx, print_offset);
-	}
-
-	// little endian values
-	else if (strcasecmp(format, "i16le") == 0) {
-		long int value = strtol(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value < INT16_MIN || value > INT16_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_i16le(haystack, haystack_size, (int16_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "u16le") == 0) {
-		unsigned long int value = strtoul(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value > UINT16_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_u16le(haystack, haystack_size, (uint16_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "i32le") == 0) {
-		long int value = strtol(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value < INT32_MIN || value > INT32_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_i32le(haystack, haystack_size, (int32_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "u32le") == 0) {
-		unsigned long int value = strtoul(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value > UINT32_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_u32le(haystack, haystack_size, (uint32_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "i64le") == 0) {
-		long long int value = strtoll(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value < INT64_MIN || value > INT64_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_i64le(haystack, haystack_size, (uint64_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "u64le") == 0) {
-		unsigned long long int value = strtoull(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value > UINT64_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_u64le(haystack, haystack_size, (uint64_t)value, ctx, print_offset);
-	}
-
-	// big endian values
-	else if (strcasecmp(format, "i16be") == 0) {
-		long int value = strtol(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value < INT16_MIN || value > INT16_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_i16be(haystack, haystack_size, (int16_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "u16be") == 0) {
-		unsigned long int value = strtoul(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT16_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_u16be(haystack, haystack_size, (uint16_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "i32be") == 0) {
-		long int value = strtol(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value < INT32_MIN || value > INT32_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_i32be(haystack, haystack_size, (int32_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "u32be") == 0) {
-		unsigned long int value = strtoul(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value > UINT32_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_u32be(haystack, haystack_size, (uint32_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "i64be") == 0) {
-		long long int value = strtoll(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		if (value < INT64_MIN || value > INT64_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_i64be(haystack, haystack_size, (uint64_t)value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "u64be") == 0) {
-		unsigned long long int value = strtoull(svalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT64_MAX) {
-			errno = ERANGE;
-			goto error;
-		}
-
-		status = vs_search_u64be(haystack, haystack_size, (uint64_t)value, ctx, print_offset);
-	}
-
-	// floating point values
-#ifdef __STDC_IEC_559__
-	else if (strcasecmp(format, "f32") == 0) {
-		float value = strtof(svalue, &endptr);
-
-		if (errno != 0) {
-			goto error;
-		}
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		status = vs_search_f32(haystack, haystack_size, value, ctx, print_offset);
-	}
-	else if (strcasecmp(format, "f64") == 0) {
-		double value = strtod(svalue, &endptr);
-
-		if (errno != 0) {
-			goto error;
-		}
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		status = vs_search_f64(haystack, haystack_size, value, ctx, print_offset);
-	}
-#if !defined(_WIN32) && !defined(_WIN64)
-	else if (strcasecmp(format, "f128") == 0) {
-		long double value = strtold(svalue, &endptr);
-
-		if (errno != 0) {
-			return -1;
-		}
-
-		if (*endptr) {
-			errno = EINVAL;
-			goto error;
-		}
-
-		status = vs_search_f128(haystack, haystack_size, value, ctx, print_offset);
-	}
-#endif
-#endif
-	else {
-		errno = EINVAL;
-		goto error;
-	}
-
-	goto end;
-
-error:
-	status = -1;
-
-end:
 	munmap((void*)haystack, haystack_size);
 
 	return status;
 }
 
+size_t needle_from_value(uint8_t needle[], size_t needle_size, const char *format, const char *strvalue) {
+	if (!*strvalue) {
+		errno = EINVAL;
+		return SIZE_MAX;
+	}
+
+	char *endptr = NULL;
+	if (strcasecmp(format, "i8") == 0) {
+		long int value = strtol(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value < INT8_MIN || value > INT8_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_i8(needle, needle_size, (int8_t)value);
+	}
+	else if (strcasecmp(format, "u8") == 0) {
+		unsigned long int value = strtoul(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value > UINT8_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_u8(needle, needle_size, (uint8_t)value);
+	}
+
+	// little endian values
+	else if (strcasecmp(format, "i16le") == 0) {
+		long int value = strtol(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value < INT16_MIN || value > INT16_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_i16le(needle, needle_size, (int16_t)value);
+	}
+	else if (strcasecmp(format, "u16le") == 0) {
+		unsigned long int value = strtoul(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value > UINT16_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_u16le(needle, needle_size, (uint16_t)value);
+	}
+	else if (strcasecmp(format, "i32le") == 0) {
+		long int value = strtol(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value < INT32_MIN || value > INT32_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_i32le(needle, needle_size, (int32_t)value);
+	}
+	else if (strcasecmp(format, "u32le") == 0) {
+		unsigned long int value = strtoul(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value > UINT32_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_u32le(needle, needle_size, (uint32_t)value);
+	}
+	else if (strcasecmp(format, "i64le") == 0) {
+		long long int value = strtoll(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value < INT64_MIN || value > INT64_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_i64le(needle, needle_size, (uint64_t)value);
+	}
+	else if (strcasecmp(format, "u64le") == 0) {
+		unsigned long long int value = strtoull(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value > UINT64_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_u64le(needle, needle_size, (uint64_t)value);
+	}
+
+	// big endian values
+	else if (strcasecmp(format, "i16be") == 0) {
+		long int value = strtol(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value < INT16_MIN || value > INT16_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_i16be(needle, needle_size, (int16_t)value);
+	}
+	else if (strcasecmp(format, "u16be") == 0) {
+		unsigned long int value = strtoul(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return -1;
+		}
+
+		if (value > UINT16_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_u16be(needle, needle_size, (uint16_t)value);
+	}
+	else if (strcasecmp(format, "i32be") == 0) {
+		long int value = strtol(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value < INT32_MIN || value > INT32_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_i32be(needle, needle_size, (int32_t)value);
+	}
+	else if (strcasecmp(format, "u32be") == 0) {
+		unsigned long int value = strtoul(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value > UINT32_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_u32be(needle, needle_size, (uint32_t)value);
+	}
+	else if (strcasecmp(format, "i64be") == 0) {
+		long long int value = strtoll(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		if (value < INT64_MIN || value > INT64_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_i64be(needle, needle_size, (uint64_t)value);
+	}
+	else if (strcasecmp(format, "u64be") == 0) {
+		unsigned long long int value = strtoull(strvalue, &endptr, 10);
+
+		if (*endptr) {
+			errno = EINVAL;
+			return -1;
+		}
+
+		if (value > UINT64_MAX) {
+			errno = ERANGE;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_u64be(needle, needle_size, (uint64_t)value);
+	}
+
+	// floating point values
+#ifdef __STDC_IEC_559__
+	// little endian
+	else if (strcasecmp(format, "f32le") == 0) {
+		float value = strtof(strvalue, &endptr);
+
+		if (errno != 0) {
+			return SIZE_MAX;
+		}
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_f32le(needle, needle_size, value);
+	}
+	else if (strcasecmp(format, "f64le") == 0) {
+		double value = strtod(strvalue, &endptr);
+
+		if (errno != 0) {
+			return SIZE_MAX;
+		}
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_f64le(needle, needle_size, value);
+	}
+
+	// big endian
+	else if (strcasecmp(format, "f32be") == 0) {
+		float value = strtof(strvalue, &endptr);
+
+		if (errno != 0) {
+			return SIZE_MAX;
+		}
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_f32be(needle, needle_size, value);
+	}
+	else if (strcasecmp(format, "f64be") == 0) {
+		double value = strtod(strvalue, &endptr);
+
+		if (errno != 0) {
+			return SIZE_MAX;
+		}
+
+		if (*endptr) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+
+		return vs_needle_from_f64be(needle, needle_size, value);
+	}
+#endif
+	else {
+		errno = EINVAL;
+		return SIZE_MAX;
+	}
+}
+
 int main(int argc, char *argv[]) {
-	const char *format = "u32le";
-	const char *value  = NULL;
 	static struct option long_options[] = {
 		{"format", required_argument, 0, 'f'},
 		{"start",  required_argument, 0, 's'},
@@ -409,6 +417,9 @@ int main(int argc, char *argv[]) {
 		{"help",   no_argument,       0, 'h'},
 		{0,        0,                 0,  0 }
 	};
+	uint8_t needle[8]  = { 0 };
+	const char *format = "u32le";
+	const char *value  = NULL;
 	int flags = 0;
 	off_t start_offset = 0;
 	off_t end_offset   = 0;
@@ -464,6 +475,19 @@ int main(int argc, char *argv[]) {
 	value = argv[optind];
 	++ optind;
 
+	errno = 0;
+	size_t needle_size = needle_from_value(needle, sizeof(needle), format, value);
+
+	if (needle_size > sizeof(needle)) {
+		if (errno == 0) {
+			fprintf(stderr, "*** internal error: needle buffer too small\n");
+		}
+		else {
+			fprintf(stderr, "--format='%s' '%s': %s\n", format, value, strerror(errno));
+		}
+		return 1;
+	}
+
 	int status = 0;
 
 	if (optind < argc) {
@@ -477,20 +501,15 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 
-			if (valuescan(filename, fd, flags, start_offset, end_offset, format, value) != 0) {
-				if (errno == EINVAL || errno == ERANGE) {
-					fprintf(stderr, "%s\n", strerror(errno));
-				}
-				else {
-					perror(filename);
-				}
+			if (valuescan(filename, fd, flags, start_offset, end_offset, needle, needle_size) != 0) {
+				perror(filename);
 				status = 1;
 			}
 
 			close(fd);
 		}
 	}
-	else if (valuescan(NULL, 0, flags, start_offset, end_offset, format, value) != 0) {
+	else if (valuescan(NULL, 0, flags, start_offset, end_offset, needle, needle_size) != 0) {
 		status = 1;
 	}
 	return status;

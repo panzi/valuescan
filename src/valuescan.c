@@ -1,120 +1,181 @@
 #include "valuescan.h"
 
+#include <endian.h>
 #include <string.h>
 
 void *memmem(const void *l, size_t l_len, const void *s, size_t s_len);
 
-int vs_search_i8(const uint8_t haystack[], size_t haystack_size, int8_t value, void *ctx, vs_callback callback) {
-	return vs_search_u8(haystack, haystack_size, (uint8_t)value, ctx, callback);
+size_t vs_needle_from_i8(uint8_t needle[], size_t needle_size, int8_t value) {
+	return vs_needle_from_u8(needle, needle_size, (uint8_t)value);
 }
 
-int vs_search_u8(const uint8_t haystack[], size_t haystack_size, uint8_t value, void *ctx, vs_callback callback) {
-	const uint8_t needle[] = { value };
-	return vs_search(haystack, haystack_size, needle, sizeof(needle), ctx, callback);
+size_t vs_needle_from_u8(uint8_t needle[], size_t needle_size, uint8_t value) {
+	if (needle_size >= sizeof(value)) {
+		needle[0] = (uint8_t)value;
+	}
+	return sizeof(value);
 }
 
-int vs_search_i16le(const uint8_t haystack[], size_t haystack_size, int16_t value, void *ctx, vs_callback callback) {
-	return vs_search_i16le(haystack, haystack_size, (uint16_t)value, ctx, callback);
+size_t vs_needle_from_i16le(uint8_t needle[], size_t needle_size, int16_t value) {
+	return vs_needle_from_u16le(needle, needle_size, (uint16_t)value);
 }
 
-int vs_search_u16le(const uint8_t haystack[], size_t haystack_size, uint16_t value, void *ctx, vs_callback callback) {
-	const uint8_t needle[] = {
-		value & 0xFF,
-		value >> 8
-	};
-	return vs_search(haystack, haystack_size, needle, sizeof(needle), ctx, callback);
+size_t vs_needle_from_u16le(uint8_t needle[], size_t needle_size, uint16_t value) {
+	if (needle_size >= sizeof(value)) {
+		needle[0] =  value       & 0xFF;
+		needle[1] = (value >> 8) & 0xFF;
+	}
+	return sizeof(value);
 }
 
-int vs_search_i32le(const uint8_t haystack[], size_t haystack_size, int32_t value, void *ctx, vs_callback callback) {
-	return vs_search_u32le(haystack, haystack_size, (uint32_t)value, ctx, callback);
+size_t vs_needle_from_i32le(uint8_t needle[], size_t needle_size, int32_t value) {
+	return vs_needle_from_u32le(needle, needle_size, (uint32_t)value);
 }
 
-int vs_search_u32le(const uint8_t haystack[], size_t haystack_size, uint32_t value, void *ctx, vs_callback callback) {
-	const uint8_t needle[] = {
-		 value        & 0xFF,
-		(value >>  8) & 0xFF,
-		(value >> 16) & 0xFF,
-		(value >> 24) & 0xFF
-	};
-	return vs_search(haystack, haystack_size, needle, sizeof(needle), ctx, callback);
+size_t vs_needle_from_u32le(uint8_t needle[], size_t needle_size, uint32_t value) {
+	if (needle_size >= sizeof(value)) {
+		needle[0] =  value        & 0xFF;
+		needle[1] = (value >>  8) & 0xFF;
+		needle[2] = (value >> 16) & 0xFF;
+		needle[3] = (value >> 24) & 0xFF;
+	}
+	return sizeof(value);
 }
 
-int vs_search_i64le(const uint8_t haystack[], size_t haystack_size, int64_t value, void *ctx, vs_callback callback) {
-	return vs_search_u64le(haystack, haystack_size, (uint64_t)value, ctx, callback);
+size_t vs_needle_from_i64le(uint8_t needle[], size_t needle_size, int64_t value) {
+	return vs_needle_from_u64le(needle, needle_size, (uint64_t)value);
 }
 
-int vs_search_u64le(const uint8_t haystack[], size_t haystack_size, uint64_t value, void *ctx, vs_callback callback) {
-	const uint8_t needle[] = {
-		 value        & 0xFF,
-		(value >>  8) & 0xFF,
-		(value >> 16) & 0xFF,
-		(value >> 24) & 0xFF,
-		(value >> 32) & 0xFF,
-		(value >> 40) & 0xFF,
-		(value >> 48) & 0xFF,
-		(value >> 56) & 0xFF
-	};
-	return vs_search(haystack, haystack_size, needle, sizeof(needle), ctx, callback);
+size_t vs_needle_from_u64le(uint8_t needle[], size_t needle_size, uint64_t value) {
+	if (needle_size >= sizeof(value)) {
+		needle[0] =  value        & 0xFF;
+		needle[1] = (value >>  8) & 0xFF;
+		needle[2] = (value >> 16) & 0xFF;
+		needle[3] = (value >> 24) & 0xFF;
+		needle[4] = (value >> 32) & 0xFF;
+		needle[5] = (value >> 40) & 0xFF;
+		needle[6] = (value >> 48) & 0xFF;
+		needle[7] = (value >> 56) & 0xFF;
+	}
+	return sizeof(value);
 }
 
-int vs_search_i16be(const uint8_t haystack[], size_t haystack_size, int16_t value, void *ctx, vs_callback callback) {
-	return vs_search_i16be(haystack, haystack_size, (uint16_t)value, ctx, callback);
+size_t vs_needle_from_i16be(uint8_t needle[], size_t needle_size, int16_t value) {
+	return vs_needle_from_u16be(needle, needle_size, (uint16_t)value);
 }
 
-int vs_search_u16be(const uint8_t haystack[], size_t haystack_size, uint16_t value, void *ctx, vs_callback callback) {
-	const uint8_t needle[] = {
-		value >> 8,
-		value & 0xFF
-	};
-	return vs_search(haystack, haystack_size, needle, sizeof(needle), ctx, callback);
+size_t vs_needle_from_u16be(uint8_t needle[], size_t needle_size, uint16_t value) {
+	if (needle_size >= sizeof(value)) {
+		needle[0] = (value >> 8) & 0xFF;
+		needle[1] =  value       & 0xFF;
+	}
+	return sizeof(value);
 }
 
-int vs_search_i32be(const uint8_t haystack[], size_t haystack_size, int32_t value, void *ctx, vs_callback callback) {
-	return vs_search_u32be(haystack, haystack_size, (uint32_t)value, ctx, callback);
+size_t vs_needle_from_i32be(uint8_t needle[], size_t needle_size, int32_t value) {
+	return vs_needle_from_u32be(needle, needle_size, (uint32_t)value);
 }
 
-int vs_search_u32be(const uint8_t haystack[], size_t haystack_size, uint32_t value, void *ctx, vs_callback callback) {
-	const uint8_t needle[] = {
-		(value >> 24) & 0xFF,
-		(value >> 16) & 0xFF,
-		(value >>  8) & 0xFF,
-		 value        & 0xFF
-	};
-	return vs_search(haystack, haystack_size, needle, sizeof(needle), ctx, callback);
+size_t vs_needle_from_u32be(uint8_t needle[], size_t needle_size, uint32_t value) {
+	if (needle_size >= sizeof(value)) {
+		needle[0] = (value >> 24) & 0xFF;
+		needle[1] = (value >> 16) & 0xFF;
+		needle[2] = (value >>  8) & 0xFF;
+		needle[3] =  value        & 0xFF;
+	}
+	return sizeof(value);
 }
 
-int vs_search_i64be(const uint8_t haystack[], size_t haystack_size, int64_t value, void *ctx, vs_callback callback) {
-	return vs_search_u64be(haystack, haystack_size, (uint64_t)value, ctx, callback);
+size_t vs_needle_from_i64be(uint8_t needle[], size_t needle_size, int64_t value) {
+	return vs_needle_from_u64be(needle, needle_size, (uint64_t)value);
 }
 
-int vs_search_u64be(const uint8_t haystack[], size_t haystack_size, uint64_t value, void *ctx, vs_callback callback) {
-	const uint8_t needle[] = {
-		(value >> 56) & 0xFF,
-		(value >> 48) & 0xFF,
-		(value >> 40) & 0xFF,
-		(value >> 32) & 0xFF,
-		(value >> 24) & 0xFF,
-		(value >> 16) & 0xFF,
-		(value >>  8) & 0xFF,
-		 value        & 0xFF
-	};
-	return vs_search(haystack, haystack_size, needle, sizeof(needle), ctx, callback);
+size_t vs_needle_from_u64be(uint8_t needle[], size_t needle_size, uint64_t value) {
+	if (needle_size >= sizeof(value)) {
+		needle[0] = (value >> 56) & 0xFF;
+		needle[1] = (value >> 48) & 0xFF;
+		needle[2] = (value >> 40) & 0xFF;
+		needle[3] = (value >> 32) & 0xFF;
+		needle[4] = (value >> 24) & 0xFF;
+		needle[5] = (value >> 16) & 0xFF;
+		needle[6] = (value >>  8) & 0xFF;
+		needle[7] =  value        & 0xFF;
+	}
+	return sizeof(value);
 }
 
-// XXX: this is probably not right
 #ifdef __STDC_IEC_559__
-int vs_search_f32( const uint8_t haystack[], size_t haystack_size, float value, void *ctx, vs_callback callback) {
-	return vs_search(haystack, haystack_size, (const uint8_t*)&value, sizeof(value), ctx, callback);
+#	if (BYTE_ORDER != BIG_ENDIAN) && (BYTE_ORDER != LITTLE_ENDIAN)
+#		error unsupported host byte order
+#	endif
+
+size_t vs_needle_from_f32le(uint8_t needle[], size_t needle_size, float value) {
+	if (needle_size >= sizeof(value)) {
+#if BYTE_ORDER == LITTLE_ENDIAN
+		memcpy(needle, &value, sizeof(value));
+#else
+		const uint8_t *ptr = (const uint8_t*)&value;
+		needle[0] = ptr[3];
+		needle[1] = ptr[2];
+		needle[2] = ptr[1];
+		needle[3] = ptr[0];
+#endif
+	}
+	return sizeof(value);
 }
 
-int vs_search_f64(const uint8_t haystack[], size_t haystack_size, double value, void *ctx, vs_callback callback) {
-	return vs_search(haystack, haystack_size, (const uint8_t*)&value, sizeof(value), ctx, callback);
-}
-#if !defined(_WIN32) && !defined(_WIN64)
-int vs_search_f128(const uint8_t haystack[], size_t haystack_size, long double value, void *ctx, vs_callback callback) {
-	return vs_search(haystack, haystack_size, (const uint8_t*)&value, sizeof(value), ctx, callback);
-}
+size_t vs_needle_from_f64le(uint8_t needle[], size_t needle_size, double value) {
+	if (needle_size >= sizeof(value)) {
+#if BYTE_ORDER == LITTLE_ENDIAN
+		memcpy(needle, &value, sizeof(value));
+#else
+		const uint8_t *ptr = (const uint8_t*)&value;
+		needle[0] = ptr[7];
+		needle[1] = ptr[6];
+		needle[2] = ptr[5];
+		needle[3] = ptr[4];
+		needle[4] = ptr[3];
+		needle[5] = ptr[2];
+		needle[6] = ptr[1];
+		needle[7] = ptr[0];
 #endif
+	}
+	return sizeof(value);
+}
+
+size_t vs_needle_from_f32be(uint8_t needle[], size_t needle_size, float value) {
+	if (needle_size >= sizeof(value)) {
+#if BYTE_ORDER == BIG_ENDIAN
+		memcpy(needle, &value, sizeof(value));
+#else
+		const uint8_t *ptr = (const uint8_t*)&value;
+		needle[0] = ptr[3];
+		needle[1] = ptr[2];
+		needle[2] = ptr[1];
+		needle[3] = ptr[0];
+#endif
+	}
+	return sizeof(value);
+}
+
+size_t vs_needle_from_f64be(uint8_t needle[], size_t needle_size, double value) {
+	if (needle_size >= sizeof(value)) {
+#if BYTE_ORDER == BIG_ENDIAN
+		memcpy(needle, &value, sizeof(value));
+#else
+		const uint8_t *ptr = (const uint8_t*)&value;
+		needle[0] = ptr[7];
+		needle[1] = ptr[6];
+		needle[2] = ptr[5];
+		needle[3] = ptr[4];
+		needle[4] = ptr[3];
+		needle[5] = ptr[2];
+		needle[6] = ptr[1];
+		needle[7] = ptr[0];
+#endif
+	}
+	return sizeof(value);
+}
 #endif
 
 int vs_search(const uint8_t haystack[], size_t haystack_size, const uint8_t needle[], size_t needle_size, void *ctx, vs_callback callback) {
