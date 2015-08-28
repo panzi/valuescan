@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <limits.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -20,6 +21,11 @@
 
 #define OFF_MAX ((off_t)~((uintmax_t)1 << (sizeof(off_t) * CHAR_BIT - 1)))
 #define OFF_MIN ((off_t) ((uintmax_t)1 << (sizeof(off_t) * CHAR_BIT - 1)))
+
+#define XCH_TO_NUM(CH) \
+	((CH) >= 'A' && (CH) <= 'F' ? 10 + (CH) - 'A' : \
+	 (CH) >= 'a' && (CH) <= 'f' ? 10 + (CH) - 'a' : \
+	 (CH) - '0')
 
 struct vs_options {
 	const char *filename;
@@ -129,13 +135,40 @@ static int valuescan(const char *filename, int fd, int flags, off_t offset_start
 }
 
 size_t needle_from_value(uint8_t needle[], size_t needle_size, const char *format, const char *strvalue) {
-	if (!*strvalue) {
-		errno = EINVAL;
-		return SIZE_MAX;
-	}
-
 	char *endptr = NULL;
-	if (strcasecmp(format, "i8") == 0) {
+	if (strcasecmp(format, "text") == 0 || strcasecmp(format, "txt") == 0) {
+		size_t size = strlen(strvalue);
+		if (size <= needle_size) {
+			memcpy(needle, strvalue, size);
+		}
+		return size;
+	}
+	else if (strcasecmp(format, "hex") == 0) {
+		size_t size = strlen(strvalue);
+		if (size % 2 != 0) {
+			errno = EINVAL;
+			return SIZE_MAX;
+		}
+		size /= 2;
+		if (size <= needle_size) {
+			for (size_t i = 0; i < size; ++ i) {
+				char ch1 = strvalue[i * 2];
+				char ch2 = strvalue[i * 2 + 1];
+
+				if (!isxdigit(ch1) || !isxdigit(ch2)) {
+					errno = EINVAL;
+					return SIZE_MAX;
+				}
+
+				uint8_t hi = XCH_TO_NUM(ch1);
+				uint8_t lo = XCH_TO_NUM(ch2);
+
+				needle[i] = (hi << 4) | lo;
+			}
+		}
+		return size;
+	}
+	else if (strcasecmp(format, "i8") == 0) {
 		long int value = strtol(strvalue, &endptr, 10);
 
 		if (*endptr) {
@@ -426,7 +459,7 @@ int main(int argc, char *argv[]) {
 		{"help",   no_argument,       0, 'h'},
 		{0,        0,                 0,  0 }
 	};
-	uint8_t needle[8]  = { 0 };
+	uint8_t needle[16] = { 0 };
 	const char *format = "u32le";
 	const char *value  = NULL;
 	int flags = 0;
@@ -485,16 +518,27 @@ int main(int argc, char *argv[]) {
 	++ optind;
 
 	errno = 0;
-	size_t needle_size = needle_from_value(needle, sizeof(needle), format, value);
+	const size_t needle_size = needle_from_value(needle, sizeof(needle), format, value);
+	uint8_t *needle_buf = needle;
 
 	if (needle_size > sizeof(needle)) {
-		if (errno == 0) {
-			fprintf(stderr, "*** internal error: needle buffer too small\n");
+		if (needle_size < SIZE_MAX) {
+			needle_buf = malloc(needle_size);
+
+			if (!needle_buf) {
+				perror("allocating needle buffer");
+				return 1;
+			}
+
+			if (needle_from_value(needle_buf, needle_size, format, value) != needle_size) {
+				fprintf(stderr, "--format='%s' '%s': %s\n", format, value, strerror(errno));
+				return 1;
+			}
 		}
 		else {
 			fprintf(stderr, "--format='%s' '%s': %s\n", format, value, strerror(errno));
+			return 1;
 		}
-		return 1;
 	}
 
 	int status = 0;
@@ -510,7 +554,7 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 
-			if (valuescan(filename, fd, flags, start_offset, end_offset, needle, needle_size) != 0) {
+			if (valuescan(filename, fd, flags, start_offset, end_offset, needle_buf, needle_size) != 0) {
 				perror(filename);
 				status = 1;
 			}
@@ -518,8 +562,13 @@ int main(int argc, char *argv[]) {
 			close(fd);
 		}
 	}
-	else if (valuescan(NULL, 0, flags, start_offset, end_offset, needle, needle_size) != 0) {
+	else if (valuescan(NULL, 0, flags, start_offset, end_offset, needle_buf, needle_size) != 0) {
 		status = 1;
 	}
+
+	if (needle_buf != needle) {
+		free(needle_buf);
+	}
+
 	return status;
 }
