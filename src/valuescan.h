@@ -3,40 +3,40 @@
 #pragma once
 
 #include <stdint.h>
-#include <stdio.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef int (*vs_callback)(void *ctx, off_t offset);
+typedef int (*vs_callback)(void *ctx, size_t offset);
 
-int vs_search_i8( int fd, int8_t   value, void *ctx, vs_callback callback);
-int vs_search_u8( int fd, uint8_t  value, void *ctx, vs_callback callback);
+int vs_search_i8( const uint8_t haystack[], size_t haystack_size, int8_t   value, void *ctx, vs_callback callback);
+int vs_search_u8( const uint8_t haystack[], size_t haystack_size, uint8_t  value, void *ctx, vs_callback callback);
 
-int vs_search_i16le(int fd, int16_t  value, void *ctx, vs_callback callback);
-int vs_search_u16le(int fd, uint16_t value, void *ctx, vs_callback callback);
-int vs_search_i32le(int fd, int32_t  value, void *ctx, vs_callback callback);
-int vs_search_u32le(int fd, uint32_t value, void *ctx, vs_callback callback);
-int vs_search_i64le(int fd, int64_t  value, void *ctx, vs_callback callback);
-int vs_search_u64le(int fd, uint64_t value, void *ctx, vs_callback callback);
+int vs_search_i16le(const uint8_t haystack[], size_t haystack_size, int16_t  value, void *ctx, vs_callback callback);
+int vs_search_u16le(const uint8_t haystack[], size_t haystack_size, uint16_t value, void *ctx, vs_callback callback);
+int vs_search_i32le(const uint8_t haystack[], size_t haystack_size, int32_t  value, void *ctx, vs_callback callback);
+int vs_search_u32le(const uint8_t haystack[], size_t haystack_size, uint32_t value, void *ctx, vs_callback callback);
+int vs_search_i64le(const uint8_t haystack[], size_t haystack_size, int64_t  value, void *ctx, vs_callback callback);
+int vs_search_u64le(const uint8_t haystack[], size_t haystack_size, uint64_t value, void *ctx, vs_callback callback);
 
-int vs_search_i16be(int fd, int16_t  value, void *ctx, vs_callback callback);
-int vs_search_u16be(int fd, uint16_t value, void *ctx, vs_callback callback);
-int vs_search_i32be(int fd, int32_t  value, void *ctx, vs_callback callback);
-int vs_search_u32be(int fd, uint32_t value, void *ctx, vs_callback callback);
-int vs_search_i64be(int fd, int64_t  value, void *ctx, vs_callback callback);
-int vs_search_u64be(int fd, uint64_t value, void *ctx, vs_callback callback);
+int vs_search_i16be(const uint8_t haystack[], size_t haystack_size, int16_t  value, void *ctx, vs_callback callback);
+int vs_search_u16be(const uint8_t haystack[], size_t haystack_size, uint16_t value, void *ctx, vs_callback callback);
+int vs_search_i32be(const uint8_t haystack[], size_t haystack_size, int32_t  value, void *ctx, vs_callback callback);
+int vs_search_u32be(const uint8_t haystack[], size_t haystack_size, uint32_t value, void *ctx, vs_callback callback);
+int vs_search_i64be(const uint8_t haystack[], size_t haystack_size, int64_t  value, void *ctx, vs_callback callback);
+int vs_search_u64be(const uint8_t haystack[], size_t haystack_size, uint64_t value, void *ctx, vs_callback callback);
 
 #ifdef __STDC_IEC_559__
-int vs_search_f32( int fd, float       value, void *ctx, vs_callback callback);
-int vs_search_f64( int fd, double      value, void *ctx, vs_callback callback);
+int vs_search_f32( const uint8_t haystack[], size_t haystack_size, float       value, void *ctx, vs_callback callback);
+int vs_search_f64( const uint8_t haystack[], size_t haystack_size, double      value, void *ctx, vs_callback callback);
 #if !defined(_WIN32) && !defined(_WIN64)
-int vs_search_f128(int fd, long double value, void *ctx, vs_callback callback);
+int vs_search_f128(const uint8_t haystack[], size_t haystack_size, long double value, void *ctx, vs_callback callback);
 #endif
 #endif
 
-int vs_search(int fd, const uint8_t data[], size_t size, void *ctx, vs_callback callback);
+int vs_search(const uint8_t haystack[], size_t haystack_size, const uint8_t needle[], size_t needle_size, void *ctx, vs_callback callback);
 
 #ifdef __cplusplus
 }
