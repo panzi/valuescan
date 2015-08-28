@@ -105,16 +105,25 @@ static int valuescan(const char *filename, int fd, int flags, off_t offset_start
 		return -1;
 	}
 
-	const size_t haystack_size = (size_t)(options.end - options.start);
-	const uint8_t *haystack = mmap(NULL, haystack_size, PROT_READ, MAP_PRIVATE, fd, options.start);
-
-	if (haystack == MAP_FAILED) {
+	long pagesize = sysconf(_SC_PAGE_SIZE);
+	if (pagesize < 0) {
 		return -1;
 	}
 
+	const size_t haystack_size = (size_t)(options.end - options.start);
+	const size_t map_delta     = options.start % pagesize;
+	const off_t  map_offset    = options.start - map_delta;
+	const size_t map_size      = haystack_size + map_delta;
+	void *map_data = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE, fd, map_offset);
+
+	if (map_data == MAP_FAILED) {
+		return -1;
+	}
+
+	const uint8_t *haystack = ((const uint8_t *)map_data) + map_delta;
 	int status = vs_search(haystack, haystack_size, needle, needle_size, &options, &print_offset);
 
-	munmap((void*)haystack, haystack_size);
+	munmap(map_data, map_size);
 
 	return status;
 }
