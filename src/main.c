@@ -26,10 +26,27 @@
 	 (CH) >= 'a' && (CH) <= 'f' ? 10 + (CH) - 'a' : \
 	 (CH) - '0')
 
+#ifdef _MSC_VER
+#	define PRIuSZ "Iu"
+#else
+#	define PRIuSZ "zu"
+#endif
+
+// printfmt:
+// %% -> %
+// %f -> filename
+// %o -> offset
+// %s -> size of matched value
+// %t -> format:value tuple as provided by user
+// %v -> value as provided by user
+// %x -> value as hex (lower case)
+// %X -> value as hex (upper case)
 struct vs_options {
+	const char *printfmt;
 	const char *filename;
 	off_t start;
 	off_t end;
+	char  eol;
 };
 
 static bool startswith(const char *str, const char *prefix) {
@@ -58,7 +75,24 @@ static int needle_size_cmp(const void *lhs, const void *rhs) {
 
 static void usage(int argc, char *argv[]) {
 	const char *binary = argc > 0 ? argv[0] : "valuescan";
-	printf("usage: %s [-s start-offset] [-e end-offset] format:value [format:value...] [--] [file...]\n", binary);
+	printf(
+		"usage: %s [options] format:value [format:value...] [--] [file...]\n"
+		"\n"
+		"OPTIONS:\n"
+		"\t-h, --help                   print this help message\n"
+		"\t-s, --start-offset=OFFSET    start scanning at OFFSET\n"
+		"\t-e, --end-offset=OFFSET      end scanning at OFFSET-1\n"
+		"\t-p, --print-format=FORMAT    use FORMAT for messages\n"
+		"\t          %%%% ... %%\n"
+		"\t          %%f ... filename\n"
+		"\t          %%o ... offset\n"
+		"\t          %%s ... size of matched value\n"
+		"\t          %%t ... format:value tuple as provided by user\n"
+		"\t          %%v ... value as provided by user\n"
+		"\t          %%x ... value as hex (lower case)\n"
+		"\t          %%X ... value as hex (upper case)\n"
+		"\t-0, --print0                 separate lines with null bytes\n",
+		binary);
 }
 
 static bool is_needle(const char *str) {
@@ -69,12 +103,77 @@ static bool is_needle(const char *str) {
 
 static int print_offset(void *ctx, const struct vs_needle *needle, size_t offset) {
 	const struct vs_options *options = (const struct vs_options *)ctx;
+	const char *fmt = options->printfmt;
+	const char *last = fmt;
 
-	if (options->filename) {
-		printf("%s:", options->filename);
+	for (;;) {
+		char ch = *fmt;
+
+		if (!ch) {
+			if (last != fmt) {
+				fwrite(last, fmt - last, 1, stdout);
+			}
+			break;
+		}
+		else if (ch == '%') {
+			if (last != fmt) {
+				fwrite(last, fmt - last, 1, stdout);
+			}
+			++ fmt;
+			ch = *fmt;
+			switch (ch) {
+			case 'f':
+				if (options->filename) {
+					fputs(options->filename, stdout);
+				}
+				++ fmt;
+				break;
+
+			case 'o':
+				printf("%" PRIuSZ, options->start + offset);
+				++ fmt;
+				break;
+
+			case 's':
+				printf("%" PRIuSZ, needle->size);
+				++ fmt;
+				break;
+
+			case 't':
+				fputs((const char*)needle->ctx, stdout);
+				++ fmt;
+				break;
+
+			case 'v':
+				fputs(strchr((const char*)needle->ctx, ':')+1, stdout);
+				++ fmt;
+				break;
+
+			case 'x':
+				for (size_t i = 0; i < needle->size; ++ i) {
+					printf("%02x", needle->data[i]);
+				}
+				++ fmt;
+				break;
+
+			case 'X':
+				for (size_t i = 0; i < needle->size; ++ i) {
+					printf("%02X", needle->data[i]);
+				}
+				++ fmt;
+				break;
+
+			default:
+				fputc('%', stdout);
+			}
+			last = fmt;
+		}
+		else {
+			++ fmt;
+		}
 	}
 
-	printf("%" PRIiPTR ": %s\n", options->start + offset, (const char*)needle->ctx);
+	fputc(options->eol, stdout);
 
 	return 0;
 }
@@ -96,7 +195,7 @@ static int parse_offset(const char *str, off_t *valueptr) {
 }
 
 static int valuescan(const char *filename, int fd, int flags, off_t offset_start, off_t offset_end,
-                     const struct vs_needle *needles, size_t needle_count) {
+                     const char *printfmt, char eol, const struct vs_needle *needles, size_t needle_count) {
 	struct stat st;
 
 	if (fstat(fd, &st) != 0) {
@@ -109,9 +208,11 @@ static int valuescan(const char *filename, int fd, int flags, off_t offset_start
 	}
 
 	struct vs_options options = {
+		.printfmt = printfmt,
 		.filename = filename,
 		.start    = 0,
-		.end      = st.st_size
+		.end      = st.st_size,
+		.eol      = eol
 	};
 
 	if (flags & START_SET) {
@@ -591,6 +692,7 @@ static int parse_needle(const char *str, struct vs_needle *needle) {
 
 int main(int argc, char *argv[]) {
 	int flags = 0;
+	const char *printfmt = NULL;
 	off_t start_offset = 0;
 	off_t end_offset   = 0;
 	const char **filenames    = NULL;
@@ -600,12 +702,14 @@ int main(int argc, char *argv[]) {
 	size_t filenames_capacity = 0;
 	size_t needles_capacity   = 0;
 	int status = 0;
+	char eol = '\n';
 
 	if (argc < 2) {
 		usage(argc, argv);
 		goto error;
 	}
 
+	// not using getopt because of custom needle option format
 	bool opts_ended = false;
 	for (int argind = 1; argind < argc; ++ argind) {
 		const char *arg = argv[argind];
@@ -649,9 +753,22 @@ int main(int argc, char *argv[]) {
 			}
 			flags |= END_SET;
 		}
+		else if (strcmp(arg, "-p") == 0 || strcmp(arg, "--print-format") == 0) {
+			if (++ argind == argc) {
+				fprintf(stderr, "*** error: missing argument to option %s\n", arg);
+				goto error;
+			}
+			printfmt = argv[argind];
+		}
+		else if (startswith(arg, "--print-format=")) {
+			printfmt = strchr(arg, '=') + 1;
+		}
 		else if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
 			usage(argc, argv);
 			goto end;
+		}
+		else if (strcmp(arg, "-0") == 0 || strcmp(arg, "--print0") == 0) {
+			eol = 0;
 		}
 		else if (strcmp(arg, "--") == 0) {
 			opts_ended = true;
@@ -705,6 +822,10 @@ int main(int argc, char *argv[]) {
 	qsort(needles, needle_count, sizeof(struct vs_needle), needle_size_cmp);
 
 	if (file_count > 0) {
+		if (!printfmt) {
+			printfmt = "%f:%o: %t";
+		}
+
 		for (size_t i = 0; i < file_count; ++ i) {
 			const char *filename = filenames[i];
 			int fd = open(filename, O_RDONLY, 0644);
@@ -715,7 +836,7 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 
-			if (valuescan(filename, fd, flags, start_offset, end_offset, needles, needle_count) != 0) {
+			if (valuescan(filename, fd, flags, start_offset, end_offset, printfmt, eol, needles, needle_count) != 0) {
 				perror(filename);
 				status = 1;
 			}
@@ -723,7 +844,7 @@ int main(int argc, char *argv[]) {
 			close(fd);
 		}
 	}
-	else if (valuescan(NULL, 0, flags, start_offset, end_offset, needles, needle_count) != 0) {
+	else if (valuescan(NULL, 0, flags, start_offset, end_offset, printfmt ? printfmt : "%o: %t", eol, needles, needle_count) != 0) {
 		status = 1;
 	}
 

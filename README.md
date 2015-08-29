@@ -6,7 +6,22 @@ Scan files for binary values.
 Usage
 -----
 
-	valuescan [-s start-offset] [-e end-offset] format:value [format:value...] [--] [file...]
+	usage: valuescan [options] format:value [format:value...] [--] [file...]
+	
+	OPTIONS:
+	        -h, --help                   print this help message
+	        -s, --start-offset=OFFSET    start scanning at OFFSET
+	        -e, --end-offset=OFFSET      end scanning at OFFSET-1
+	        -p, --print-format=FORMAT    use FORMAT for messages
+	                  %% ... %
+	                  %f ... filename
+	                  %o ... offset
+	                  %s ... size of matched value
+	                  %t ... format:value tuple as provided by user
+	                  %v ... value as provided by user
+	                  %x ... value as hex (lower case)
+	                  %X ... value as hex (upper case)
+	        -0, --print0                 separate lines with null bytes
 
 ### Supported Formats
 
