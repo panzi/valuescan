@@ -80,6 +80,10 @@ static int print_offset(void *ctx, const struct vs_needle *needle, size_t offset
 }
 
 static int parse_offset(const char *str, off_t *valueptr) {
+	if (!*str) {
+		errno = EINVAL;
+		return -1;
+	}
 	char *endptr = NULL;
 	long long int value = strtoll(str, &endptr, 10);
 	if (*endptr) return -1;
@@ -92,7 +96,7 @@ static int parse_offset(const char *str, off_t *valueptr) {
 }
 
 static int valuescan(const char *filename, int fd, int flags, off_t offset_start, off_t offset_end,
-		const struct vs_needle *needles, size_t needle_count) {
+                     const struct vs_needle *needles, size_t needle_count) {
 	struct stat st;
 
 	if (fstat(fd, &st) != 0) {
