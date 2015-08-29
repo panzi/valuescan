@@ -3,15 +3,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <getopt.h>
 #include <string.h>
 #include <strings.h>
 #include <inttypes.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <errno.h>
 #include <limits.h>
 #include <ctype.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -33,19 +32,50 @@ struct vs_options {
 	off_t end;
 };
 
-static void usage(int argc, char *argv[]) {
-	printf("usage: %s [-f format] [-s start-offset] [-e end-offset] value [file...]\n", argc > 0 ? argv[0] : "valuescan");
+static bool startswith(const char *str, const char *prefix) {
+	while (*prefix) {
+		if (*prefix++ != *str++) {
+			return false;
+		}
+	}
+	return true;
 }
 
-static int print_offset(void *ctx, size_t offset) {
+static bool startswith_ignorecase(const char *str, const char *prefix) {
+	while (*prefix) {
+		if (tolower(*prefix++) != tolower(*str++)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static int needle_size_cmp(const void *lhs, const void *rhs) {
+	const struct vs_needle *n1 = lhs;
+	const struct vs_needle *n2 = rhs;
+	return n2->size - n1->size;
+}
+
+static void usage(int argc, char *argv[]) {
+	const char *binary = argc > 0 ? argv[0] : "valuescan";
+	printf("usage: %s [-s start-offset] [-e end-offset] format:value [format:value...] [--] [file...]\n", binary);
+}
+
+static bool is_needle(const char *str) {
+	const char *ptr = str;
+	while (isalnum(*ptr)) ++ ptr;
+	return (ptr - str) > 1 && ptr[0] == ':' && ptr[1] != 0;
+}
+
+static int print_offset(void *ctx, const struct vs_needle *needle, size_t offset) {
 	const struct vs_options *options = (const struct vs_options *)ctx;
 
 	if (options->filename) {
-		printf("%s: %" PRIiPTR "\n", options->filename, options->start + offset);
+		printf("%s:", options->filename);
 	}
-	else {
-		printf("%" PRIiPTR "\n", options->start + offset);
-	}
+
+	printf("%" PRIiPTR ": %s\n", options->start + offset, (const char*)needle->ctx);
+
 	return 0;
 }
 
@@ -62,7 +92,7 @@ static int parse_offset(const char *str, off_t *valueptr) {
 }
 
 static int valuescan(const char *filename, int fd, int flags, off_t offset_start, off_t offset_end,
-		const uint8_t needle[], size_t needle_size) {
+		const struct vs_needle *needles, size_t needle_count) {
 	struct stat st;
 
 	if (fstat(fd, &st) != 0) {
@@ -127,187 +157,240 @@ static int valuescan(const char *filename, int fd, int flags, off_t offset_start
 	}
 
 	const uint8_t *haystack = ((const uint8_t *)map_data) + map_delta;
-	int status = vs_search(haystack, haystack_size, needle, needle_size, &options, &print_offset);
+	int status = vs_search(haystack, haystack_size, needles, needle_count, &options, &print_offset);
 
 	munmap(map_data, map_size);
 
 	return status;
 }
 
-size_t needle_from_value(uint8_t needle[], size_t needle_size, const char *format, const char *strvalue) {
+static int parse_needle(const char *str, struct vs_needle *needle) {
 	char *endptr = NULL;
-	if (strcasecmp(format, "text") == 0 || strcasecmp(format, "txt") == 0) {
-		size_t size = strlen(strvalue);
-		if (size <= needle_size) {
-			memcpy(needle, strvalue, size);
+	const char *strvalue = strchr(str, ':') + 1;
+	size_t   size = 0;
+	uint8_t *data = NULL;
+
+	if (startswith_ignorecase(str, "text:") || startswith_ignorecase(str, "string:")) {
+		size = strlen(strvalue);
+		data = malloc(size);
+		if (!data) {
+			return -1;
 		}
-		return size;
+		memcpy(data, strvalue, size);
 	}
-	else if (strcasecmp(format, "hex") == 0) {
-		size_t size = strlen(strvalue);
+	else if (startswith_ignorecase(str, "hex:")) {
+		size = strlen(strvalue);
 		if (size % 2 != 0) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 		size /= 2;
-		if (size <= needle_size) {
-			for (size_t i = 0; i < size; ++ i) {
-				char ch1 = strvalue[i * 2];
-				char ch2 = strvalue[i * 2 + 1];
-
-				if (!isxdigit(ch1) || !isxdigit(ch2)) {
-					errno = EINVAL;
-					return SIZE_MAX;
-				}
-
-				uint8_t hi = XCH_TO_NUM(ch1);
-				uint8_t lo = XCH_TO_NUM(ch2);
-
-				needle[i] = (hi << 4) | lo;
-			}
+		data = malloc(size);
+		if (!data) {
+			return -1;
 		}
-		return size;
+		
+		for (size_t i = 0; i < size; ++ i) {
+			char ch1 = strvalue[i * 2];
+			char ch2 = strvalue[i * 2 + 1];
+
+			if (!isxdigit(ch1) || !isxdigit(ch2)) {
+				free(data);
+				errno = EINVAL;
+				return -1;
+			}
+
+			uint8_t hi = XCH_TO_NUM(ch1);
+			uint8_t lo = XCH_TO_NUM(ch2);
+
+			data[i] = (hi << 4) | lo;
+		}
 	}
-	else if (strcasecmp(format, "i8") == 0) {
+	else if (startswith_ignorecase(str, "i8:")) {
 		long int value = strtol(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value < INT8_MIN || value > INT8_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_i8(needle, needle_size, (int8_t)value);
+		size = 1;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_i8(data, size, (int8_t)value);
 	}
-	else if (strcasecmp(format, "u8") == 0) {
+	else if (startswith_ignorecase(str, "u8:")) {
 		unsigned long int value = strtoul(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value > UINT8_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_u8(needle, needle_size, (uint8_t)value);
+		size = 1;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_u8(data, size, (uint8_t)value);
 	}
 
 	// little endian values
-	else if (strcasecmp(format, "i16le") == 0) {
+	else if (startswith_ignorecase(str, "i16le:")) {
 		long int value = strtol(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value < INT16_MIN || value > INT16_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_i16le(needle, needle_size, (int16_t)value);
+		size = 2;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_i16le(data, size, (int16_t)value);
 	}
-	else if (strcasecmp(format, "u16le") == 0) {
+	else if (startswith_ignorecase(str, "u16le:")) {
 		unsigned long int value = strtoul(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value > UINT16_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_u16le(needle, needle_size, (uint16_t)value);
+		size = 2;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_u16le(data, size, (uint16_t)value);
 	}
-	else if (strcasecmp(format, "i32le") == 0) {
+	else if (startswith_ignorecase(str, "i32le:")) {
 		long int value = strtol(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value < INT32_MIN || value > INT32_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_i32le(needle, needle_size, (int32_t)value);
+		size = 4;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_i32le(data, size, (int32_t)value);
 	}
-	else if (strcasecmp(format, "u32le") == 0) {
+	else if (startswith_ignorecase(str, "u32le:")) {
 		unsigned long int value = strtoul(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value > UINT32_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_u32le(needle, needle_size, (uint32_t)value);
+		size = 4;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_u32le(data, size, (uint32_t)value);
 	}
-	else if (strcasecmp(format, "i64le") == 0) {
+	else if (startswith_ignorecase(str, "i64le:")) {
 		long long int value = strtoll(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value < INT64_MIN || value > INT64_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_i64le(needle, needle_size, (uint64_t)value);
+		size = 8;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_i64le(data, size, (uint64_t)value);
 	}
-	else if (strcasecmp(format, "u64le") == 0) {
+	else if (startswith_ignorecase(str, "u64le:")) {
 		unsigned long long int value = strtoull(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value > UINT64_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_u64le(needle, needle_size, (uint64_t)value);
+		size = 8;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_u64le(data, size, (uint64_t)value);
 	}
 
 	// big endian values
-	else if (strcasecmp(format, "i16be") == 0) {
+	else if (startswith_ignorecase(str, "i16be:")) {
 		long int value = strtol(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value < INT16_MIN || value > INT16_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_i16be(needle, needle_size, (int16_t)value);
+		size = 2;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_i16be(data, size, (int16_t)value);
 	}
-	else if (strcasecmp(format, "u16be") == 0) {
+	else if (startswith_ignorecase(str, "u16be:")) {
 		unsigned long int value = strtoul(strvalue, &endptr, 10);
 
 		if (*endptr) {
@@ -317,57 +400,77 @@ size_t needle_from_value(uint8_t needle[], size_t needle_size, const char *forma
 
 		if (value > UINT16_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_u16be(needle, needle_size, (uint16_t)value);
+		size = 2;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_u16be(data, size, (uint16_t)value);
 	}
-	else if (strcasecmp(format, "i32be") == 0) {
+	else if (startswith_ignorecase(str, "i32be:")) {
 		long int value = strtol(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value < INT32_MIN || value > INT32_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_i32be(needle, needle_size, (int32_t)value);
+		size = 4;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_i32be(data, size, (int32_t)value);
 	}
-	else if (strcasecmp(format, "u32be") == 0) {
+	else if (startswith_ignorecase(str, "u32be:")) {
 		unsigned long int value = strtoul(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value > UINT32_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_u32be(needle, needle_size, (uint32_t)value);
+		size = 4;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_u32be(data, size, (uint32_t)value);
 	}
-	else if (strcasecmp(format, "i64be") == 0) {
+	else if (startswith_ignorecase(str, "i64be:")) {
 		long long int value = strtoll(strvalue, &endptr, 10);
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (value < INT64_MIN || value > INT64_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_i64be(needle, needle_size, (uint64_t)value);
+		size = 8;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_i64be(data, size, (uint64_t)value);
 	}
-	else if (strcasecmp(format, "u64be") == 0) {
+	else if (startswith_ignorecase(str, "u64be:")) {
 		unsigned long long int value = strtoull(strvalue, &endptr, 10);
 
 		if (*endptr) {
@@ -377,175 +480,229 @@ size_t needle_from_value(uint8_t needle[], size_t needle_size, const char *forma
 
 		if (value > UINT64_MAX) {
 			errno = ERANGE;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_u64be(needle, needle_size, (uint64_t)value);
+		size = 8;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_u64be(data, size, (uint64_t)value);
 	}
 
 	// floating point values
 #ifdef __STDC_IEC_559__
 	// little endian
-	else if (strcasecmp(format, "f32le") == 0) {
+	else if (startswith_ignorecase(str, "f32le:")) {
 		float value = strtof(strvalue, &endptr);
 
 		if (errno != 0) {
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_f32le(needle, needle_size, value);
+		size = 4;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_f32le(data, size, value);
 	}
-	else if (strcasecmp(format, "f64le") == 0) {
+	else if (startswith_ignorecase(str, "f64le:")) {
 		double value = strtod(strvalue, &endptr);
 
 		if (errno != 0) {
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_f64le(needle, needle_size, value);
+		size = 8;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_f64le(data, size, value);
 	}
 
 	// big endian
-	else if (strcasecmp(format, "f32be") == 0) {
+	else if (startswith_ignorecase(str, "f32be:")) {
 		float value = strtof(strvalue, &endptr);
 
 		if (errno != 0) {
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_f32be(needle, needle_size, value);
+		size = 4;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_f32be(data, size, value);
 	}
-	else if (strcasecmp(format, "f64be") == 0) {
+	else if (startswith_ignorecase(str, "f64be:")) {
 		double value = strtod(strvalue, &endptr);
 
 		if (errno != 0) {
-			return SIZE_MAX;
+			return -1;
 		}
 
 		if (*endptr) {
 			errno = EINVAL;
-			return SIZE_MAX;
+			return -1;
 		}
 
-		return vs_needle_from_f64be(needle, needle_size, value);
+		size = 8;
+		data = malloc(size);
+		if (!data) {
+			return -1;
+		}
+		vs_needle_from_f64be(data, size, value);
 	}
 #endif
 	else {
 		errno = EINVAL;
-		return SIZE_MAX;
+		return -1;
 	}
+
+	needle->size = size;
+	needle->data = data;
+	needle->ctx  = (void*)str;
+
+	return 0;
 }
 
 int main(int argc, char *argv[]) {
-	static struct option long_options[] = {
-		{"format", required_argument, 0, 'f'},
-		{"start",  required_argument, 0, 's'},
-		{"end",    required_argument, 0, 'e'},
-		{"help",   no_argument,       0, 'h'},
-		{0,        0,                 0,  0 }
-	};
-	uint8_t needle[16] = { 0 };
-	const char *format = "u32le";
-	const char *value  = NULL;
 	int flags = 0;
 	off_t start_offset = 0;
 	off_t end_offset   = 0;
+	const char **filenames    = NULL;
+	struct vs_needle *needles = NULL;
+	size_t file_count   = 0;
+	size_t needle_count = 0;
+	size_t filenames_capacity = 0;
+	size_t needles_capacity   = 0;
+	int status = 0;
 
 	if (argc < 2) {
 		usage(argc, argv);
-		return 1;
+		goto error;
 	}
 
-	for (;;) {
-		int c = getopt_long(argc, argv, "hf:s:e:", long_options, NULL);
+	bool opts_ended = false;
+	for (int argind = 1; argind < argc; ++ argind) {
+		const char *arg = argv[argind];
 
-		if (c == -1)
-			break;
-
-		switch (c) {
-		case 'h':
-			// TODO: more help
-			usage(argc, argv);
-			return 0;
-
-		case 'f':
-			format = optarg;
-			break;
-
-		case 's':
-			if (parse_offset(optarg, &start_offset) != 0) {
-				perror(optarg);
-				return 1;	
+		if (opts_ended) {
+			goto filename_arg;
+		}
+		else if (strcmp(arg, "-s") == 0 || strcmp(arg, "--start-offset") == 0) {
+			if (++ argind == argc) {
+				fprintf(stderr, "*** error: missing argument to option %s\n", arg);
+				goto error;
+			}
+			if (parse_offset(argv[argind], &start_offset) != 0) {
+				perror(argv[argind]);
+				goto error;	
 			}
 			flags |= START_SET;
-			break;
-
-		case 'e':
-			if (parse_offset(optarg, &end_offset) != 0) {
-				perror(optarg);
-				return 1;
+		}
+		else if (startswith(arg, "--start-offset=")) {
+			if (parse_offset(strchr(arg, '=')+1, &start_offset) != 0) {
+				perror(arg);
+				goto error;	
+			}
+			flags |= START_SET;
+		}
+		else if (strcmp(arg, "-e") == 0 || strcmp(arg, "--end-offset") == 0) {
+			if (++ argind == argc) {
+				fprintf(stderr, "*** error: missing argument to option %s\n", arg);
+				goto error;
+			}
+			if (parse_offset(argv[argind], &end_offset) != 0) {
+				perror(argv[argind]);
+				goto error;	
 			}
 			flags |= END_SET;
-			break;
-
-		case '?':
-			fprintf(stderr, "*** error: unknown option -%c\n", c);
-			usage(argc, argv);
-			return 1;
 		}
-	}
-
-	if (optind >= argc) {
-		usage(argc, argv);
-		return 1;
-	}
-	value = argv[optind];
-	++ optind;
-
-	errno = 0;
-	const size_t needle_size = needle_from_value(needle, sizeof(needle), format, value);
-	uint8_t *needle_buf = needle;
-
-	if (needle_size > sizeof(needle)) {
-		if (needle_size < SIZE_MAX) {
-			needle_buf = malloc(needle_size);
-
-			if (!needle_buf) {
-				perror("allocating needle buffer");
-				return 1;
+		else if (startswith(arg, "--end-offset=")) {
+			if (parse_offset(strchr(arg, '=')+1, &end_offset) != 0) {
+				perror(arg);
+				goto error;	
 			}
-
-			if (needle_from_value(needle_buf, needle_size, format, value) != needle_size) {
-				fprintf(stderr, "--format='%s' '%s': %s\n", format, value, strerror(errno));
-				return 1;
+			flags |= END_SET;
+		}
+		else if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
+			usage(argc, argv);
+			goto end;
+		}
+		else if (strcmp(arg, "--") == 0) {
+			opts_ended = true;
+			++ argind;
+			break;
+		}
+		else if (startswith(arg, "-")) {
+			fprintf(stderr, "*** error: unknown option %s\n", arg);
+			goto error;
+		}
+		else if (is_needle(arg)) {
+			struct vs_needle needle = { 0 };
+			if (parse_needle(arg, &needle) != 0) {
+				perror(arg);
+				goto error;
 			}
+			if (needle_count == needles_capacity) {
+				needles_capacity += 32;
+				struct vs_needle *buf = realloc(needles, sizeof(struct vs_needle) * needles_capacity);
+				if (!buf) {
+					perror("allocating needle buffer");
+					goto error;
+				}
+				needles = buf;
+				memset(needles + needle_count, 0, (needles_capacity - needle_count) * sizeof(struct vs_needle));
+			}
+			needles[needle_count ++] = needle;
 		}
 		else {
-			fprintf(stderr, "--format='%s' '%s': %s\n", format, value, strerror(errno));
-			return 1;
+		filename_arg:
+			if (file_count == filenames_capacity) {
+				filenames_capacity += 64;
+				const char **buf = realloc(filenames, sizeof(char*) * filenames_capacity);
+				if (!buf) {
+					perror("allocating fiename buffer");
+					goto error;
+				}
+				filenames = buf;
+				memset(filenames + file_count, 0, (filenames_capacity - file_count) * sizeof(char*));
+			}
+			filenames[file_count ++] = arg;
 		}
 	}
 
-	int status = 0;
+	if (needle_count == 0) {
+		fprintf(stderr, "*** error: no needles given\n");
+		goto error;
+	}
 
-	if (optind < argc) {
-		for (int i = optind; i < argc; ++ i) {
-			const char *filename = argv[i];
+	// biggest match first
+	qsort(needles, needle_count, sizeof(struct vs_needle), needle_size_cmp);
+
+	if (file_count > 0) {
+		for (size_t i = 0; i < file_count; ++ i) {
+			const char *filename = filenames[i];
 			int fd = open(filename, O_RDONLY, 0644);
 
 			if (fd == -1) {
@@ -554,7 +711,7 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 
-			if (valuescan(filename, fd, flags, start_offset, end_offset, needle_buf, needle_size) != 0) {
+			if (valuescan(filename, fd, flags, start_offset, end_offset, needles, needle_count) != 0) {
 				perror(filename);
 				status = 1;
 			}
@@ -562,12 +719,25 @@ int main(int argc, char *argv[]) {
 			close(fd);
 		}
 	}
-	else if (valuescan(NULL, 0, flags, start_offset, end_offset, needle_buf, needle_size) != 0) {
+	else if (valuescan(NULL, 0, flags, start_offset, end_offset, needles, needle_count) != 0) {
 		status = 1;
 	}
 
-	if (needle_buf != needle) {
-		free(needle_buf);
+	goto end;
+
+error:
+	status = 1;
+
+end:
+	if (filenames) {
+		free(filenames);
+	}
+
+	if (needles) {
+		for (size_t i = 0; i < needle_count; ++ i) {
+			free((void*)needles[i].data);
+		}
+		free(needles);
 	}
 
 	return status;

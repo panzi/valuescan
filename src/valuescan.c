@@ -178,24 +178,22 @@ size_t vs_needle_from_f64be(uint8_t needle[], size_t needle_size, double value) 
 }
 #endif
 
-int vs_search(const uint8_t haystack[], size_t haystack_size, const uint8_t needle[], size_t needle_size, void *ctx, vs_callback callback) {
-	int status = 0;
+int vs_search(const uint8_t haystack[], size_t haystack_size, const struct vs_needle needles[], size_t needle_count, void *ctx, vs_callback callback) {
+	const uint8_t *end = haystack + haystack_size;
 
-	size_t rem = haystack_size;
-	for (const void *ptr = haystack; rem >= needle_size;) {
-		uint8_t *next = memmem(ptr, rem, needle, needle_size);
-
-		if (!next) {
-			break;
+	for (const uint8_t *ptr = haystack; ptr < end; ++ ptr) {
+		const size_t rem = (size_t)(end - ptr);
+		for (size_t i = 0; i < needle_count; ++ i) {
+			const struct vs_needle *needle = needles + i;
+			if (needle->size <= rem && memcmp(needle->data, ptr, needle->size) == 0) {
+				int status = callback(ctx, needle, (size_t)(ptr - haystack));
+				if (status != 0) {
+					return status;
+				}
+				break;
+			}
 		}
-
-		if ((status = callback(ctx, (size_t)(next - haystack))) != 0) {
-			break;
-		}
-
-		rem -= (size_t)(next - (const uint8_t*)ptr) + needle_size;
-		ptr = next + needle_size;
 	}
-	
-	return status;
+
+	return 0;
 }

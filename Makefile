@@ -14,7 +14,7 @@ POSIX_CFLAGS=$(COMMON_CFLAGS) -pedantic -fdiagnostics-color
 CFLAGS=$(COMMON_CFLAGS)
 ARCH_FLAGS=
 
-OBJ=$(BUILDDIR_BIN)/valuescan.o $(BUILDDIR_BIN)/main.o $(BUILDDIR_BIN)/memmem.o
+OBJ=$(BUILDDIR_BIN)/valuescan.o $(BUILDDIR_BIN)/main.o
 
 ifeq ($(TARGET),win32)
 	CC=i686-w64-mingw32-gcc
