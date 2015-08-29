@@ -170,7 +170,7 @@ static int parse_needle(const char *str, struct vs_needle *needle) {
 	size_t   size = 0;
 	uint8_t *data = NULL;
 
-	if (startswith_ignorecase(str, "text:") || startswith_ignorecase(str, "string:")) {
+	if (startswith_ignorecase(str, "text:")) {
 		size = strlen(strvalue);
 		data = malloc(size);
 		if (!data) {
