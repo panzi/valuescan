@@ -1,7 +1,7 @@
 valuescan
 =========
 
-Scan a binary file for a value.
+Scan files for binary values.
 
 Usage
 -----
@@ -32,3 +32,5 @@ Usage
 | f64le          | 64 bit IEC 559 floating point value in little endian encoding |
 | f32be          | 32 bit IEC 559 floating point value in big endian encoding    |
 | f64be          | 64 bit IEC 559 floating point value in big endian encoding    |
+
+**Note:** The floating point stuff needs testing.
