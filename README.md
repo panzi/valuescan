@@ -15,13 +15,13 @@ Usage
 | text           | simple text                                                   |
 | hex            | binary data encoded as a sequence hexadecimal values          |
 | i8             | signed 8 bit integer value                                    |
-| u8             | unsinged 8 bit integer value                                  |
 | i16le          | signed 16 bit integer value in little endian encoding         |
 | i32le          | signed 32 bit integer value in little endian encoding         |
 | i64le          | signed 64 bit integer value in little endian encoding         |
 | i16be          | signed 16 bit integer value in big endian encoding            |
 | i32be          | signed 32 bit integer value in big endian encoding            |
 | i64be          | signed 64 bit integer value in big endian encoding            |
+| u8             | unsinged 8 bit integer value                                  |
 | u16le          | unsigned 16 bit integer value in little endian encoding       |
 | u32le          | unsigned 32 bit integer value in little endian encoding       |
 | u64le          | unsigned 64 bit integer value in little endian encoding       |
