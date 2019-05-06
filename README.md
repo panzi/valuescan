@@ -10,7 +10,7 @@ Usage
 	
 	BLOB FORAMTS:
 	
-	        text .... either simple string [-+\._a-zA-Z0-9]* or C-like quoted string
+	        text .... either simple string [-+\._:/\\%a-zA-Z0-9]* or C-like quoted string
 	        hex ..... hex encoded binary
 	        file .... read needle from given file (filename is encoded like text)
 	

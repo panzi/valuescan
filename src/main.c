@@ -72,7 +72,7 @@ static void usage(int argc, char *argv[]) {
 		"\n"
 		"BLOB FORAMTS:\n"
 		"\n"
-		"\ttext .... either simple string [-+\\._a-zA-Z0-9]* or C-like quoted string\n"
+		"\ttext .... either simple string [-+\\._:/\\\\%%a-zA-Z0-9]* or C-like quoted string\n"
 		"\thex ..... hex encoded binary\n"
 		"\tfile .... read needle from given file (filename is encoded like text)\n"
 		"\n"

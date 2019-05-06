@@ -164,7 +164,10 @@ static const char *parse_string(const char *str, char *buf, size_t *sizeptr) {
 		}
 		++ str;
 	} else {
-		while (isalnum(*str) || isspace(*str) || *str == '-' || *str == '+' || *str == '_' || *str == '.') {
+		while (
+			isalnum(*str) || isspace(*str) || *str == '-' || *str == '+' ||
+			*str == '_' || *str == '.' || *str == ':' || *str == '/' ||
+			*str == '\\' || *str == '%') {
 			if (bufsize > size) {
 				buf[size] = *str;
 			}
