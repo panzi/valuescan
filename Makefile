@@ -10,11 +10,11 @@ ifeq ($(DEBUG),ON)
 else
 	COMMON_CFLAGS+=-O2
 endif
-POSIX_CFLAGS=$(COMMON_CFLAGS) -pedantic -fdiagnostics-color
+POSIX_CFLAGS=$(COMMON_CFLAGS) -fdiagnostics-color
 CFLAGS=$(COMMON_CFLAGS)
 ARCH_FLAGS=
 
-OBJ=$(BUILDDIR_BIN)/valuescan.o $(BUILDDIR_BIN)/main.o
+OBJ=$(BUILDDIR_BIN)/parse_needle.o $(BUILDDIR_BIN)/valuescan.o $(BUILDDIR_BIN)/main.o
 
 ifeq ($(TARGET),win32)
 	CC=i686-w64-mingw32-gcc

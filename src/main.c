@@ -1,4 +1,5 @@
 #include "valuescan.h"
+#include "parse_needle.h"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -58,15 +59,6 @@ static bool startswith(const char *str, const char *prefix) {
 	return true;
 }
 
-static bool startswith_ignorecase(const char *str, const char *prefix) {
-	while (*prefix) {
-		if (tolower(*prefix++) != tolower(*str++)) {
-			return false;
-		}
-	}
-	return true;
-}
-
 static int needle_size_cmp(const void *lhs, const void *rhs) {
 	const struct vs_needle *n1 = lhs;
 	const struct vs_needle *n2 = rhs;
@@ -76,17 +68,18 @@ static int needle_size_cmp(const void *lhs, const void *rhs) {
 static void usage(int argc, char *argv[]) {
 	const char *binary = argc > 0 ? argv[0] : "valuescan";
 	printf(
-		"usage: %s [options] format:value [format:value...] [--] [file...]\n"
+		"Usage: %s [options] format:value[,format:value...]... [--] [file...]\n"
 		"\n"
 		"BLOB FORAMTS:\n"
 		"\n"
-		"\ttext .... text as given\n"
+		"\ttext .... either simple string [-+\\._a-zA-Z0-9]* or C-like quoted string\n"
 		"\thex ..... hex encoded binary\n"
+		"\tfile .... read needle from given file (filename is encoded like text)\n"
 		"\n"
 		"NUMBER FORMATS:\n"
 		"\n"
-		"\tFormat | Type    | Bits |   Sign   |    Encoding\n"
-		"\t-------+---------+------+----------+---------------\n"
+		"\tFormat | Type    | Bits |   Sign   |  Byte Order\n"
+		"\t------ | ------- | ---- | -------- | --------------\n"
 		"\ti8     | integer |    8 | signed   |     ----\n"
 		"\tu8     | integer |    8 | unsigned |     ----\n"
 		"\ti16le  | integer |   16 | signed   | little endian\n"
@@ -121,14 +114,23 @@ static void usage(int argc, char *argv[]) {
 		"\t          %%v ... value as provided by user\n"
 		"\t          %%x ... value as hex (lower case)\n"
 		"\t          %%X ... value as hex (upper case)\n"
-		"\t-0, --print0                 separate lines with null bytes\n",
-		binary);
+		"\t-0, --print0                 separate lines with null bytes\n"
+		"\n"
+		"EXAMPLES:\n"
+		"\n"
+		"\tFind a 1024x1024 or 2048x2048 square:\n"
+		"\n"
+		"\t\t%s u32le:1024,u32le:1024 u32le:2048,u32le:2048 -- file.bin\n",
+		binary, binary);
 }
 
 static bool is_needle(const char *str) {
-	const char *ptr = str;
-	while (isalnum(*ptr)) ++ ptr;
-	return (ptr - str) > 1 && ptr[0] == ':' && ptr[1] != 0;
+	// non-empty string that is not an option and not a path
+	// (for a very loose definition of what is a path)
+	return *str && *str != '-' &&
+		*str != '/' && *str != '\\' && *str != '.' &&
+		!(isalpha(*str) && str[1] == ':') &&
+		strchr(str, ':') != NULL;
 }
 
 static int print_offset(void *ctx, const struct vs_needle *needle, size_t offset) {
@@ -299,427 +301,6 @@ static int valuescan(const char *filename, int fd, int flags, off_t offset_start
 	return status;
 }
 
-static int parse_needle(const char *str, struct vs_needle *needle) {
-	char *endptr = NULL;
-	const char *strvalue = strchr(str, ':') + 1;
-	size_t   size = 0;
-	uint8_t *data = NULL;
-
-	if (startswith_ignorecase(str, "text:")) {
-		size = strlen(strvalue);
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		memcpy(data, strvalue, size);
-	}
-	else if (startswith_ignorecase(str, "hex:")) {
-		size = strlen(strvalue);
-		if (size % 2 != 0) {
-			errno = EINVAL;
-			return -1;
-		}
-		size /= 2;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		
-		for (size_t i = 0; i < size; ++ i) {
-			char ch1 = strvalue[i * 2];
-			char ch2 = strvalue[i * 2 + 1];
-
-			if (!isxdigit(ch1) || !isxdigit(ch2)) {
-				free(data);
-				errno = EINVAL;
-				return -1;
-			}
-
-			uint8_t hi = XCH_TO_NUM(ch1);
-			uint8_t lo = XCH_TO_NUM(ch2);
-
-			data[i] = (hi << 4) | lo;
-		}
-	}
-	else if (startswith_ignorecase(str, "i8:")) {
-		long int value = strtol(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value < INT8_MIN || value > INT8_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 1;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_i8(data, size, (int8_t)value);
-	}
-	else if (startswith_ignorecase(str, "u8:")) {
-		unsigned long int value = strtoul(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT8_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 1;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_u8(data, size, (uint8_t)value);
-	}
-
-	// little endian values
-	else if (startswith_ignorecase(str, "i16le:")) {
-		long int value = strtol(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value < INT16_MIN || value > INT16_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 2;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_i16le(data, size, (int16_t)value);
-	}
-	else if (startswith_ignorecase(str, "u16le:")) {
-		unsigned long int value = strtoul(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT16_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 2;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_u16le(data, size, (uint16_t)value);
-	}
-	else if (startswith_ignorecase(str, "i32le:")) {
-		long int value = strtol(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value < INT32_MIN || value > INT32_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 4;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_i32le(data, size, (int32_t)value);
-	}
-	else if (startswith_ignorecase(str, "u32le:")) {
-		unsigned long int value = strtoul(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT32_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 4;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_u32le(data, size, (uint32_t)value);
-	}
-	else if (startswith_ignorecase(str, "i64le:")) {
-		long long int value = strtoll(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value < INT64_MIN || value > INT64_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 8;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_i64le(data, size, (uint64_t)value);
-	}
-	else if (startswith_ignorecase(str, "u64le:")) {
-		unsigned long long int value = strtoull(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT64_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 8;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_u64le(data, size, (uint64_t)value);
-	}
-
-	// big endian values
-	else if (startswith_ignorecase(str, "i16be:")) {
-		long int value = strtol(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value < INT16_MIN || value > INT16_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 2;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_i16be(data, size, (int16_t)value);
-	}
-	else if (startswith_ignorecase(str, "u16be:")) {
-		unsigned long int value = strtoul(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT16_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 2;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_u16be(data, size, (uint16_t)value);
-	}
-	else if (startswith_ignorecase(str, "i32be:")) {
-		long int value = strtol(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value < INT32_MIN || value > INT32_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 4;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_i32be(data, size, (int32_t)value);
-	}
-	else if (startswith_ignorecase(str, "u32be:")) {
-		unsigned long int value = strtoul(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT32_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 4;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_u32be(data, size, (uint32_t)value);
-	}
-	else if (startswith_ignorecase(str, "i64be:")) {
-		long long int value = strtoll(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value < INT64_MIN || value > INT64_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 8;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_i64be(data, size, (uint64_t)value);
-	}
-	else if (startswith_ignorecase(str, "u64be:")) {
-		unsigned long long int value = strtoull(strvalue, &endptr, 10);
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		if (value > UINT64_MAX) {
-			errno = ERANGE;
-			return -1;
-		}
-
-		size = 8;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_u64be(data, size, (uint64_t)value);
-	}
-
-	// floating point values
-#ifdef __STDC_IEC_559__
-	// little endian
-	else if (startswith_ignorecase(str, "f32le:")) {
-		float value = strtof(strvalue, &endptr);
-
-		if (errno != 0) {
-			return -1;
-		}
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		size = 4;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_f32le(data, size, value);
-	}
-	else if (startswith_ignorecase(str, "f64le:")) {
-		double value = strtod(strvalue, &endptr);
-
-		if (errno != 0) {
-			return -1;
-		}
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		size = 8;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_f64le(data, size, value);
-	}
-
-	// big endian
-	else if (startswith_ignorecase(str, "f32be:")) {
-		float value = strtof(strvalue, &endptr);
-
-		if (errno != 0) {
-			return -1;
-		}
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		size = 4;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_f32be(data, size, value);
-	}
-	else if (startswith_ignorecase(str, "f64be:")) {
-		double value = strtod(strvalue, &endptr);
-
-		if (errno != 0) {
-			return -1;
-		}
-
-		if (*endptr) {
-			errno = EINVAL;
-			return -1;
-		}
-
-		size = 8;
-		data = malloc(size);
-		if (!data) {
-			return -1;
-		}
-		vs_needle_from_f64be(data, size, value);
-	}
-#endif
-	else {
-		errno = EINVAL;
-		return -1;
-	}
-
-	needle->size = size;
-	needle->data = data;
-	needle->ctx  = (void*)str;
-
-	return 0;
-}
-
 int main(int argc, char *argv[]) {
 	int flags = 0;
 	const char *printfmt = NULL;
@@ -754,7 +335,7 @@ int main(int argc, char *argv[]) {
 			}
 			if (parse_offset(argv[argind], &start_offset) != 0) {
 				perror(argv[argind]);
-				goto error;	
+				goto error;
 			}
 			flags |= START_SET;
 		}
@@ -810,8 +391,8 @@ int main(int argc, char *argv[]) {
 			goto error;
 		}
 		else if (is_needle(arg)) {
-			struct vs_needle needle = { 0 };
-			if (parse_needle(arg, &needle) != 0) {
+			struct vs_needle needle = { 0, .ctx = (void*)arg };
+			if (vs_parse_needle(arg, &needle) != 0) {
 				perror(arg);
 				goto error;
 			}
@@ -874,7 +455,7 @@ int main(int argc, char *argv[]) {
 			close(fd);
 		}
 	}
-	else if (valuescan(NULL, 0, flags, start_offset, end_offset, printfmt ? printfmt : "%o: %t", eol, needles, needle_count) != 0) {
+	else if (valuescan(NULL, STDIN_FILENO, flags, start_offset, end_offset, printfmt ? printfmt : "%o: %t", eol, needles, needle_count) != 0) {
 		status = 1;
 	}
 
