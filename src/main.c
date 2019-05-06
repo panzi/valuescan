@@ -120,7 +120,9 @@ static void usage(int argc, char *argv[]) {
 		"\n"
 		"\tFind a 1024x1024 or 2048x2048 square:\n"
 		"\n"
-		"\t\t%s u32le:1024,u32le:1024 u32le:2048,u32le:2048 -- file.bin\n",
+		"\t\t%s u32le:1024,u32le:1024 u32le:2048,u32le:2048 -- file.bin\n"
+		"\n"
+		"Report bugs to: https://github.com/panzi/valuescan/issues\n",
 		binary, binary);
 }
 

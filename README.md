@@ -6,7 +6,36 @@ Scan files for binary values.
 Usage
 -----
 
-	usage: valuescan [options] format:value [format:value...] [--] [file...]
+	Usage: valuescan [options] format:value[,format:value...]... [--] [file...]
+	
+	BLOB FORAMTS:
+	
+	        text .... either simple string [-+\._a-zA-Z0-9]* or C-like quoted string
+	        hex ..... hex encoded binary
+	        file .... read needle from given file (filename is encoded like text)
+	
+	NUMBER FORMATS:
+	
+	        Format | Type    | Bits |   Sign   |  Byte Order
+	        ------ | ------- | ---- | -------- | --------------
+	        i8     | integer |    8 | signed   |     ----
+	        u8     | integer |    8 | unsigned |     ----
+	        i16le  | integer |   16 | signed   | little endian
+	        u16le  | integer |   16 | unsigned | little endian
+	        i32le  | integer |   32 | signed   | little endian
+	        u32le  | integer |   32 | unsigned | little endian
+	        i64le  | integer |   64 | signed   | little endian
+	        u64le  | integer |   64 | unsigned | little endian
+	        i16be  | integer |   16 | signed   | big endian
+	        u16be  | integer |   16 | unsigned | big endian
+	        i32be  | integer |   32 | signed   | big endian
+	        u32be  | integer |   32 | unsigned | big endian
+	        i64be  | integer |   64 | signed   | big endian
+	        u64be  | integer |   64 | unsigned | big endian
+	        f32le  | float   |   32 | signed   | little endian
+	        f64le  | float   |   64 | signed   | little endian
+	        f32be  | float   |   32 | signed   | big endian
+	        f64be  | float   |   64 | signed   | big endian
 	
 	OPTIONS:
 	        -h, --help                   print this help message
@@ -22,30 +51,13 @@ Usage
 	                  %x ... value as hex (lower case)
 	                  %X ... value as hex (upper case)
 	        -0, --print0                 separate lines with null bytes
-
-### Supported Formats
-
-| Format         | Description                                                   |
-| -------------- | ------------------------------------------------------------- |
-| text           | simple text                                                   |
-| hex            | binary data encoded as a sequence hexadecimal values          |
-| i8             | signed 8 bit integer value                                    |
-| i16le          | signed 16 bit integer value in little endian encoding         |
-| i32le          | signed 32 bit integer value in little endian encoding         |
-| i64le          | signed 64 bit integer value in little endian encoding         |
-| i16be          | signed 16 bit integer value in big endian encoding            |
-| i32be          | signed 32 bit integer value in big endian encoding            |
-| i64be          | signed 64 bit integer value in big endian encoding            |
-| u8             | unsinged 8 bit integer value                                  |
-| u16le          | unsigned 16 bit integer value in little endian encoding       |
-| u32le          | unsigned 32 bit integer value in little endian encoding       |
-| u64le          | unsigned 64 bit integer value in little endian encoding       |
-| u16be          | unsigned 16 bit integer value in big endian encoding          |
-| u32be          | unsigned 32 bit integer value in big endian encoding          |
-| u64be          | unsigned 64 bit integer value in big endian encoding          |
-| f32le          | 32 bit IEC 559 floating point value in little endian encoding |
-| f64le          | 64 bit IEC 559 floating point value in little endian encoding |
-| f32be          | 32 bit IEC 559 floating point value in big endian encoding    |
-| f64be          | 64 bit IEC 559 floating point value in big endian encoding    |
+	
+	EXAMPLES:
+	
+	        Find a 1024x1024 or 2048x2048 square:
+	
+	                valuescan u32le:1024,u32le:1024 u32le:2048,u32le:2048 -- file.bin
+	
+	Report bugs to: https://github.com/panzi/valuescan/issues
 
 **Note:** The floating point stuff needs testing.
